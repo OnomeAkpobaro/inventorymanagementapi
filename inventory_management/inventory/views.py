@@ -2,11 +2,18 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import Category, InventoryItem, InventoryChange
 from .serializers import CategorySerializer, InventoryItemSerializer, InventoryChangeSerializer
 
 # Create your views here.
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 100
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
+
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -14,36 +21,194 @@ class CategoryViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
+    pagination_class = StandardResultsSetPagination
 
+    def list(self, request):
+        """
+        List all categories with optional filtering and search
+        Includes the count of items in each category
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response ({
+            "status": "success",
+            "count": queryset.count(),
+            "result": serializer.data
+        })
+
+
+    def create(self, request):
+        """
+        creates a new category with validation for duplicate names
+        """
+        name = request.data.get('name', '').strip()
+        if Category.objects.filter(name__iexact=name).exists():
+            return Response({
+                'status': 'error',
+                'message': 'A category with the name already exist.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response({
+            'status': 'success',
+            'message': 'Category created successfully.'
+        }, status=status.HTTP_201_CREATED)
+    
+    def retrieve(self, request):
+        """
+        Retrieve a category with its related name
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+
+        items = instance.items.all()
+        item_serializer = InventoryItemSerializer(items, many=True)
+
+        return Response({
+            'status': 'success',
+            'data': {
+                'category': serializer.data,
+                'items': item_serializer.data
+            }
+        })
+    def update(self, request, pk=None):
+        """
+        Updatwe a category
+        """
+        instance = self.get_object()
+        name = request.data.get('name', '').strip()
+
+        if Category.objects.filter(name__iexact=name).exclude(pk=pk).exists():
+            return Response({
+                "status": "error",
+                "message": "A category with this name already exists."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response({
+            "status": "success",
+            "message": "Category updated successfully",
+            "data": serializer.data
+        })
+    def destroy(self, request):
+        """
+        Delete a category
+        """
+        instance =self.get_object()
+        item_count = instance.items.count()
+
+        if item_count > 0:
+            return Response({
+                'status': 'error',
+                'message': f'Cannot delete category . It has {items_count} items attached to it.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        self.perform_destroy(instance)
+        return Response({
+            "status": "success",
+            "message": "Category deleted successfully."
+        }, status=status.HTTP_200_OK)
+    
 class InventoryItemViewSet(viewsets.ModelViewSet):
     serializer_class = InventoryItemSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['category']
     search_fields = ['name', 'quantity', 'price', 'date_added']
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        queryset = InventoryItem.objects.all()
+        queryset = InventoryItem.objects.select_related('category').filter(created_by=self.request.user)
+        return self._apply_filters(queryset)
 
+    def _apply_filters(self, queryset):
         #Filter by price range
-        min_price = self.request.query_params.get('min_price', None)
-        max_price = self.request.query_params.get('max_price', None)
+        min_price = self.request.query_params.get('min_price')
+        max_price = self.request.query_params.get('max_price')
         if min_price:
             queryset = queryset.filter(price__gte=min_price)
         if max_price:
             queryset = queryset.filter(price__lte=max_price)
-
+                                                                                                                                                            
         #Filter low stock items
-        low_stock = self.request.query_params.get('low_stock', None)
+        low_stock = self.request.query_params.get('low_stock')
         if low_stock:
             threshold = int(low_stock)
             queryset = queryset.filter(quantity__lte=threshold)
         return queryset
+    
+    def list(self, request):
+        """
+        Lists inventory items with extra metadata
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            "status": "success",
+            "count": queryset.count(),
+            "results": serializer.data,
+        })
+    def create(self, request):
+        """
+        Create a new inventory item
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        return Response({
+            "status": "success",
+            "message": "Inventory item successfully created.",
+            "data": serializer.data
+        }, status=status.HTTP_201_CREATED)
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    def retrieve(self, request, pk=None):
+        """
+        Retrieve an inventory item
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+
+        return Response({
+            "status": "success",
+            "data": serializer.data
+        }) 
+    def update(self, request, pk=None):
+        """
+        Update an inventory
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response({
+            "status": "success",
+            "message": "Inventory item successfully updated",
+            "data": serializer.data
+        })
+    def destroy(self, request, pk=None):
+        """
+        Delete an inventory item
+        """
+        instance = self.get_object()
+        self.perform_destroy(instance)
+
+        return Response({
+            "status": "success",
+            "message": "Inventory item successfully deleted."
+        }, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
     def adjust_stock(self, request, pk=None):
+        """
+        Adjust the stock quantity of an item
+        """
         item = self.get_object()
         quantity_change = request.data.get('quantity_change', 0)
         notes = request.data.get('notes', '')
@@ -56,7 +221,10 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
         new_quantity = previous_quantity + quantity_change
 
         if new_quantity < 0:
-            return Response({'error': 'Insufficient stock'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "status": "error",
+                "message": "Insufficient stock"
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         #create inventory change record
         change_type = 'ADD' if quantity_change > 0 else 'REMOVE'
@@ -72,7 +240,11 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
         item.quantity = new_quantity
         item.save()
 
-        return Response(self.get_serializer(item).data)
+        return Response({
+            "status": "success",
+            "message": "Stock adjusted successfully",
+            "data": self.get_serializer(item).data
+        })
 
 class InventoryChangeViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = InventoryChangeSerializer
@@ -80,8 +252,35 @@ class InventoryChangeViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['item', 'change_type']
     ordering_fields = ['timestamp']
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
         return InventoryChange.objects.filter(item__created_by=self.request.user).select_related('item', 'changed_by')
+    
+    def list(self, request):
+        """
+        List inventory changes with pagination
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            "status": "success",
+            "message": "Inventory changes retrieved successfully",
+            "count": queryset.count(),
+            "results": serializer.data
+        })
+    
+    def retrieve(self, request, pk=None):
+        """
+        Retrieve an inventory change record
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+
+        return Response({
+            "status": "success",
+            "message": "Inventory change record retrieved successfully.",
+            "data": serializer.data
+        })
     
 
