@@ -24,6 +24,7 @@ class InventoryItem(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='inventory_items')
     date_added = models.DateTimeField(auto_now_add=True)
     last_updated = models.DateTimeField(auto_now=True)
+    # user = models.ForeignKey(User, on_delete=models.CASCADE)
 
     def __str__(self):
         return f"{self.name} - Qty: {self.quantity}"

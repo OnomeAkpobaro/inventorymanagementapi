@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'inventory.apps.InventoryConfig',
     'rest_framework',
     'django_filters',
+    'rest_framework_simplejwt',
 
 ]
 
@@ -144,6 +145,10 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ),
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
 }
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),

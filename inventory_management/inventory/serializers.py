@@ -8,15 +8,11 @@ class CategorySerializer(serializers.ModelSerializer):
 
 class InventoryItemSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
-    created_by_username = serializers.CharField(source='created_by_username', read_only=True)
+    created_by_username = serializers.CharField(read_only=True)
 
     class Meta:
         model = InventoryItem
-        fields = [
-            'id', 'name', 'description', 'quantity', 'price',
-            'category', 'category_name', 'created_by_usernmae',
-            'date_added', 'last_updated'
-        ]
+        fields = "__all__"
         read_only_fields = ['created_by', 'date_added', 'last_updated']
 
 class InventoryChangeSerializer(serializers.ModelSerializer):
@@ -25,10 +21,6 @@ class InventoryChangeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InventoryChange
-        fields = [
-            'id', 'item', 'item_name', 'change_type',
-            'quantity_change', 'previous_quantity', 'new_quantity',
-            'changed_by', 'changed_by_username', 'timestamp', 'notes'
-        ]
+        fields = "__all__"
         read_only_fields = ['changed_by', 'timestamp']
         
