@@ -4,9 +4,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Category, InventoryItem, InventoryChange
-from .serializers import CategorySerializer, InventoryItemSerializer, InventoryChangeSerializer
-
+from .models import Category, InventoryItem, InventoryChange, Supplier, Store, StoreInventory
+from .serializers import CategorySerializer, InventoryItemSerializer, InventoryChangeSerializer, SupplierSerializer, StoreSerializer, StoreInventorySerializer
+from django_filters import FilterSet, BooleanFilter
+from django.db import models
+from rest_framework.views import APIView
+from .reports import InventoryReport
+from datetime import datetime
 # Create your views here.
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -283,4 +287,85 @@ class InventoryChangeViewSet(viewsets.ReadOnlyModelViewSet):
             "data": serializer.data
         })
     
+
+class SupplierViewSet(viewsets.ModelViewSet):
+    serializer_class = SupplierSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'contact_person', 'email']
+    ordering_fields = ['name', 'created_at']
+
+    def get_queryset(self):
+        return Supplier.objects.filter(created_by=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+class StoreViewSet(viewsets.ModelViewSet):
+    serializer_class = StoreSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'address', 'email']
+    ordering_fields = ['name', 'created_at']
+
+    def get_queryset(self):
+        return Store.objects.filter(created_by=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+
+class StoreInventoryFilterSet(FilterSet):
+    is_low_stock = BooleanFilter(method='filter_is_low_stock')
+
+    class Meta:
+        model = StoreInventory
+        fields = ['store', 'item']
+
+    def filter_is_low_stock(self, queryset, name, value):
+        if value:
+            return queryset.filter(quantity__lte=models.F('low_stock_threshold'))
+        return queryset
+
+
+class StoreInventoryViewSet(viewsets.ModelViewSet):
+    serializer_class = StoreInventorySerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_class = StoreInventoryFilterSet
+    ordering_fields = ['quantity', 'store_name', 'item_name']
+
+    def get_queryset(self):
+        return StoreInventory.objects.filter(store__created_by=self.request.user).select_related('store', 'item')
+    
+
+class StockReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            store_id = request.query_params.get('store_id')
+
+
+            start_date = datetime.strptime(start_date, '%Y-%m-%d') if start_date else None
+            end_date = datetime.strptime(end_date, '%Y-%m-%d') if end_date else None
+
+
+            #Generate report
+            report = InventoryReport(user=request.user, start_date=start_date, end_date=end_date, store=store_id)
+
+            report_data = report.generate_stock_report()
+            return Response(report_data)
+        
+        except ValueError as e:
+            return Response(
+                {"error": "Invalid date format. Format must be YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 

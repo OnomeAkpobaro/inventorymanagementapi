@@ -8,17 +8,35 @@ from .serializers import UserRegistrationSerializer,UserLoginSerializer
 from rest_framework.permissions import IsAuthenticated, AllowAny
 # Create your views here.
 
+# Get the active User model as defined in settings.py
 User = get_user_model()
 
 class UserRegistrationViewSet(ReadOnlyModelViewSet):
+    """
+    ViewSet for handling user registration.
+    Inherits from ReadOlyModelViewSet to provide read-only operations by default.
+    """
+
+    # Query all users from the database
     queryset = User.objects.all()
+
+    # Specify the serializer class for user registration
     serializer_class = UserRegistrationSerializer
+
+    # Alllow any user (authenticated or not) to access this ViewSet
     permission_classes = [AllowAny]
 
     def create(self, request):
         """
-        Creates custom method to handle user registration
+        Custom method to handle user registration.
+
+        Args:
+            request: HTTP request object containing user registration data
+        
+        Returns:
+            Response: JSON response with registration status and user details or error messages if validation fails 
         """
+
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
@@ -32,14 +50,32 @@ class UserRegistrationViewSet(ReadOnlyModelViewSet):
     
 
 class UserLoginViewset(viewsets.ModelViewSet):
+    """
+    ViewSet for handling user login operations.
+    Inherits from ModelViewSet to provide full CRUD operations.
+
+    """
+
+    # Query all users from the database
     queryset = User.objects.all()
+
+    # Specify the serializer class for user login
     serializer_class = UserLoginSerializer
+
+    # Allow any user to access this viewset
     permission_classes =[AllowAny]
 
     @action(detail=False, methods=['post'])
     def login(self, request):
         """
-        Handles user login and return authentication token
+        Custom action to handle user login.
+        with @action decorator to create a custom endpoint at /login/
+
+        Args:
+            request: HTTP request object containing login credentials
+
+        Returns:
+            Response: JSON response wit authentication token if login is successful or error messages if validation fails
         """
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
@@ -50,46 +86,4 @@ class UserLoginViewset(viewsets.ModelViewSet):
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-# class UserProfileViewset(viewsets.ModelViewSet):
-#     """
-#     Viewset for user profile operations
-#     provides endpoint for ciewing and updating user profiles
-#     """
-
-#     serializer_class = UserProfileSerializer
-#     permission_classes = [IsAuthenticated]
-
-#     def get_queryset(self):
-#         """
-#         Filter queryset to return only the current user's profile
-#         """
-#         return User.objects.filter(id=self.request.user.id)
-#     def update(self, request, *args, **kwargs):
-#         """
-#         Custom update method to handle profile updates
-#         """
-#         partial = kwargs.pop('partial', False)
-#         instance = self.get_object()
-#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
-
-#         if serializer.is_valid():
-#             self.perform_update(serializer)
-#             return Response({
-#                 "status": "success",
-#                 "message": "Profile Update Successful",
-#                 "data": serializer.data
-#             })
-#         else:
-#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-#     @action(detail=False, methods=['get'])
-#     def current_user(self, request):
-#         """
-#         Endpoint to get current uswer's profile
-#         """
-#         serializer = self.get_serializer(request.user)
-#         return Response(serializer.data)
-        
-        
 
