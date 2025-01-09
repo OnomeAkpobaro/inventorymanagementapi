@@ -416,6 +416,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         #Returns alerts for stores created by cureent user
         #Uses select_related for optimisation
         return InventoryAlert.objects.filter(store__created_by=self.request.user).select_related('store', 'item')
+    
     @action(detail=True, methods=['post'])
     def resolve_alert(self, request, pk=None):
         #Custom action to mark an alert as resolved
