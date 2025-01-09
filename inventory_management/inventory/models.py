@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator
 
-
+#Get the active User model as specified in settings.py
 User = get_user_model()
 
 
@@ -34,6 +34,9 @@ class Category(models.Model):
 
     Relationship:
     - Has many inventoryItems
+
+    Meta:
+    - Sets plural name to "Categories" for admin interface
     """
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
@@ -64,8 +67,8 @@ class InventoryItem(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='inventory_items')
     date_added = models.DateTimeField(auto_now_add=True)
     last_updated = models.DateTimeField(auto_now=True)
-    suppllier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, related_name='items')
-    barcode = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, related_name='items')
+    # barcode = models.CharField(max_length=100, unique=True, null=True, blank=True)
 
     
     def __str__(self):
@@ -131,6 +134,14 @@ class StoreInventory(models.Model):
     - Belongs to a store (ForeignKey)
     - References a InventoryItem (ForeignKey)
 
+    Properties:
+    - is_low_stock: Returnsn True if quantity less than or equal to low_stock_threshold
+    - needs_reorder: Returns Ture if quantity less than or equal to reorder_point
+
+    Meta:
+    - Ensures unique conbination of store and item
+    - Sets plural name for admin interface
+
     """
     store = models.ForeignKey(Store, on_delete=models.CASCADE)
     item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE)
@@ -143,7 +154,7 @@ class StoreInventory(models.Model):
         unique_together = ['store', 'item']
         verbose_name_plural = 'Store Inventories'
 
-        def __str__(self):
+    def __str__(self):
             return f"{self.store.name} - {self.item.name}"
     @property
     def is_low_stock(self):
@@ -160,6 +171,9 @@ class InventoryAlert(models.Model):
     Relationship:
     - Belongs to a store (ForeginKey)
     - References an InventoryItem (ForeignKey)
+
+    Meta: 
+    - Orders alerts by created_at in desending order
     """
     ALERT_TYPES = (
         ('LOW_STOCK', 'Low Stock Alert'),
@@ -172,8 +186,12 @@ class InventoryAlert(models.Model):
     item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE)
     alert_type = models.CharField(max_length=20, choices=ALERT_TYPES)
     message = models.BooleanField(default=False)
+    is_resolved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
 
     def __str__(self):
